@@ -10,7 +10,7 @@ SEQUENCE_LENGTH = 30
 mp_hands = mp.solutions.hands
 hands = mp_hands.Hands(
     static_image_mode=False,
-    max_num_hands=1,
+    max_num_hands=2,
     min_detection_confidence=0.5,
     min_tracking_confidence=0.5
 )
@@ -29,27 +29,28 @@ y = []
 
 
 def extract_landmarks(frame):
-
     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
     result = hands.process(rgb)
 
+    landmarks = []
+
     if result.multi_hand_landmarks:
+        for hand_landmarks in result.multi_hand_landmarks:
+            for lm in hand_landmarks.landmark:
+                landmarks.extend([lm.x, lm.y, lm.z])
 
-        hand_landmarks = result.multi_hand_landmarks[0]
+    # FIX PENTING: selalu 126 dimensi
+    if len(landmarks) == 63:
+        landmarks.extend([0] * 63)
 
-        landmarks = []
+    if len(landmarks) == 0:
+        landmarks = [0] * 126
 
-        for lm in hand_landmarks.landmark:
-            landmarks.extend([
-                lm.x,
-                lm.y,
-                lm.z
-            ])
+    # FORCE SIZE
+    if len(landmarks) < 126:
+        landmarks.extend([0] * (126 - len(landmarks)))
 
-        return landmarks
-
-    return [0] * 63
+    return landmarks[:126]
 
 
 for label in classes:
@@ -76,6 +77,10 @@ for label in classes:
                 break
 
             landmarks = extract_landmarks(frame)
+
+            if len(landmarks) != 126:
+                print("ERROR SHAPE:", len(landmarks))
+                continue
 
             frames.append(landmarks)
 

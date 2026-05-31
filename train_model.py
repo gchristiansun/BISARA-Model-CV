@@ -30,7 +30,7 @@ model = Sequential([
     LSTM(
         128,
         return_sequences=True,
-        input_shape=(30, 63)
+        input_shape=(30, 126)
     ),
 
     Dropout(0.2),

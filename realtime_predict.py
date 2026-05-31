@@ -4,6 +4,9 @@ import numpy as np
 from collections import deque
 from tensorflow.keras.models import load_model
 
+# =====================
+# CONFIG
+# =====================
 SEQUENCE_LENGTH = 30
 
 classes = [
@@ -14,12 +17,15 @@ classes = [
 
 model = load_model("models/bisindo_lstm.h5")
 
+# =====================
+# MEDIAPIPE SETUP
+# =====================
 mp_hands = mp.solutions.hands
 mp_draw = mp.solutions.drawing_utils
 
 hands = mp_hands.Hands(
     static_image_mode=False,
-    max_num_hands=1,
+    max_num_hands=2,
     min_detection_confidence=0.5,
     min_tracking_confidence=0.5
 )
@@ -28,42 +34,49 @@ sequence = deque(maxlen=SEQUENCE_LENGTH)
 
 cap = cv2.VideoCapture(0)
 
-
+# =====================
+# LANDMARK EXTRACTION (2 HANDS FIXED 126)
+# =====================
 def extract_landmarks(frame):
-
     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
     result = hands.process(rgb)
+
+    landmarks = []
 
     if result.multi_hand_landmarks:
 
-        hand_landmarks = result.multi_hand_landmarks[0]
+        # draw semua tangan
+        for hand_landmarks in result.multi_hand_landmarks:
+            mp_draw.draw_landmarks(
+                frame,
+                hand_landmarks,
+                mp_hands.HAND_CONNECTIONS
+            )
 
-        mp_draw.draw_landmarks(
-            frame,
-            hand_landmarks,
-            mp_hands.HAND_CONNECTIONS
-        )
+            for lm in hand_landmarks.landmark:
+                landmarks.extend([lm.x, lm.y, lm.z])
 
-        landmarks = []
+    # =====================
+    # FORCE 126 FEATURES
+    # =====================
+    if len(landmarks) == 63:
+        landmarks.extend([0] * 63)
 
-        for lm in hand_landmarks.landmark:
+    if len(landmarks) == 0:
+        landmarks = [0] * 126
 
-            landmarks.extend([
-                lm.x,
-                lm.y,
-                lm.z
-            ])
+    # safety padding/truncate
+    landmarks = landmarks[:126]
 
-        return landmarks
-
-    return [0] * 63
+    return landmarks
 
 
+# =====================
+# MAIN LOOP
+# =====================
 while True:
 
     ret, frame = cap.read()
-
     if not ret:
         break
 
@@ -73,14 +86,17 @@ while True:
 
     sequence.append(landmarks)
 
+    # =====================
+    # PREDICTION
+    # =====================
     if len(sequence) == SEQUENCE_LENGTH:
 
-        input_data = np.expand_dims(sequence, axis=0)
+        input_data = np.array(sequence, dtype=np.float32)
+        input_data = np.expand_dims(input_data, axis=0)
 
         prediction = model.predict(input_data, verbose=0)
 
         class_id = np.argmax(prediction)
-
         confidence = prediction[0][class_id]
 
         label = classes[class_id]
